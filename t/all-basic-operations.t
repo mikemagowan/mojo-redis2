@@ -5,6 +5,7 @@ use Mojo::Collection ();
 use Test::More;
 use List::Util 'shuffle';
 use Sort::Versions 'versioncmp';
+use Test::Number::Delta;
 use lib '.';
 use t::Util;
 
@@ -40,8 +41,8 @@ sub Connection {
 sub Hashes {
   is $redis->hmset($key, foo => 39, bar => 'fourty_two'), 'OK', 'hmset';
   is $redis->hincrby($key, foo => 3), 42, 'hincrby return new value';
-  is $redis->hincrbyfloat($key, foo => 5.75),  47.75, 'hincrbyfloat return new value';
-  is $redis->hincrbyfloat($key, foo => -2.75), 45,    'negative hincrbyfloat return new value';
+  delta_ok $redis->hincrbyfloat($key, foo => 5.75),  47.75, 'hincrbyfloat return new value';
+  delta_ok $redis->hincrbyfloat($key, foo => -2.75), 45,    'negative hincrbyfloat return new value';
   is_deeply [sort @{$redis->hkeys($key)}], [qw( bar foo )], 'hkeys';
 
   my $warning = '';
@@ -215,9 +216,8 @@ sub Strings {
   is $redis->incr($key), 11, 'incr';
   is $redis->incrby($key, 6), 17, 'incrby';
 
-  # 32 bit Redis on ARM requires floating point precision fix
-  is sprintf('%.6f', $redis->incrbyfloat($key, 3.895421)),  20.895421, 'positive incrbyfloat';
-  is $redis->incrbyfloat($key, -6.895421), 14,        'negative incrbyfloat';
+  delta_ok $redis->incrbyfloat($key, 3.895421),  20.895421, 'positive incrbyfloat';
+  delta_ok $redis->incrbyfloat($key, -6.895421), 14,        'negative incrbyfloat';
 
   is $redis->mset($key => 123, "$key:ex" => 321), 'OK', 'mset';
   is_deeply $redis->mget($key, "$key:nope", "$key:ex"), [123, undef, 321], 'mget';
@@ -243,34 +243,27 @@ SKIP: {
 
     skip 'geo commands require Redis 3.2.0', 12 if versioncmp($redis_version, '3.2.0') == -1;
 
-    my @testlocs = qw(
+    my $testlocs = Mojo::Collection->new(qw(
       -3.055344 53.815931 Blackpool
       -2.700635 53.759607 Preston
       -3.006270 53.647920 Southport
       -3.014240 53.919310 Fleetwood
       -2.799996 54.045655 Lancaster
       -0.798977 51.214957 Farnham
-    );
+    ));
 
-    is $redis->geoadd($key => @testlocs), scalar(@testlocs) / 3, 'geoadd';
-    is $redis->geodist($key => qw( Blackpool Farnham km )),  327.0952,     'geodist in km';
-    is $redis->geodist($key => qw( Blackpool NonExisting )), undef,        'geoexist missing location';
-    is $redis->geodist($key => qw( Farnham Fleetwood ft )),  1102286.9318, 'geodist in feet';
+    is        $redis->geoadd ($key => @$testlocs), $testlocs->size / 3,           'geoadd';
+    delta_ok  $redis->geodist($key => qw( Blackpool Farnham km )),  327.0952,     'geodist in km';
+    is        $redis->geodist($key => qw( Blackpool NonExisting )), undef,        'geoexist missing location';
+    delta_ok  $redis->geodist($key => qw( Farnham Fleetwood ft )),  1102286.9318, 'geodist in feet';
     is_deeply $redis->geohash($key => qw( Lancaster Southport Blackpool )),
       ['gcw52q9ng20', 'gctc5w6cuc0', 'gctf4kzht20'], 'geohash';
 
-    {
-      # Return values will be slightly different due to redis converting locations into 52 bit geohashes
-      # So we round and then compare
+    # Return values will be slightly different due to redis converting locations into 52 bit geohashes
 
-      my $res = $redis->geopos($key => qw( Preston NonExisting Blackpool ));
-
-      is sprintf("%.4f", $res->[0][0]), sprintf("%.4f", $testlocs[3]), 'getpos element 1.0';    ## Preston Longtitude
-      is sprintf("%.4f", $res->[0][1]), sprintf("%.4f", $testlocs[4]), 'getpos element 1.1';    ## Preston Latitude
-      is $res->[1][0], undef, 'getpos element 2 - nonlocation';                                 ## NonExistent Location
-      is sprintf("%.4f", $res->[2][0]), sprintf("%.4f", $testlocs[0]), 'getpos element 2.0';    ## Blackpool Longtitude
-      is sprintf("%.4f", $res->[2][1]), sprintf("%.4f", $testlocs[1]), 'getpos element 2.1';    ## Blackpool Latitude
-    }
+    my $res = Mojo::Collection->new($redis->geopos($key => qw( Blackpool Preston Southport )));
+    delta_within @{$res->flatten}, @{$testlocs->slice(0,1,  3,4,  6,7)}, '1e-4', 'geopos - location exists';
+    is_deeply $redis->geopos($key => qw( NotExists )), [[]], 'geopos - location not exists';
 
     is_deeply $redis->georadius($key => qw( -3.0 53.8 20 km WITHDIST ASC)),
       [['Blackpool', '4.0438'], ['Fleetwood', '13.3032'], ['Southport', '16.9204']], 'georadius';

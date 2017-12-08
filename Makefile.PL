@@ -20,7 +20,11 @@ my %WriteMakefileArgs = (
       },
     },
   },
-  TEST_REQUIRES => {'Test::More'  => '0.88', 'Sort::Versions'  => '1.5'},
+  TEST_REQUIRES => {
+                    'Test::More'          => '0.88',
+                    'Sort::Versions'      => '1.5',
+                    'Test::Number::Delta' => '1.06'
+  },
   PREREQ_PM     => {'Mojolicious' => '7.50', 'Protocol::Redis' => '1.0'},
   test => {TESTS => (-e 'META.yml' ? 't/*.t' : 't/*.t xt/*.t')},
 );
