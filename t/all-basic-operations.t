@@ -243,16 +243,16 @@ SKIP: {
 
     skip 'geo commands require Redis 3.2.0', 12 if versioncmp($redis_version, '3.2.0') == -1;
 
-    my $testlocs = Mojo::Collection->new(qw(
+    my @testlocs = qw(
       -3.055344 53.815931 Blackpool
       -2.700635 53.759607 Preston
       -3.006270 53.647920 Southport
       -3.014240 53.919310 Fleetwood
       -2.799996 54.045655 Lancaster
       -0.798977 51.214957 Farnham
-    ));
+    );
 
-    is        $redis->geoadd ($key => @$testlocs), $testlocs->size / 3,           'geoadd';
+    is        $redis->geoadd ($key => @testlocs), scalar(@testlocs) / 3,          'geoadd';
     delta_ok  $redis->geodist($key => qw( Blackpool Farnham km )),  327.0952,     'geodist in km';
     is        $redis->geodist($key => qw( Blackpool NonExisting )), undef,        'geoexist missing location';
     delta_ok  $redis->geodist($key => qw( Farnham Fleetwood ft )),  1102286.9318, 'geodist in feet';
@@ -262,7 +262,10 @@ SKIP: {
     # Return values will be slightly different due to redis converting locations into 52 bit geohashes
 
     my $res = Mojo::Collection->new($redis->geopos($key => qw( Blackpool Preston Southport )));
-    delta_within @{$res->flatten}, @{$testlocs->slice(0,1,  3,4,  6,7)}, '1e-4', 'geopos - location exists';
+
+    my @checklocs = @testlocs[0,1,  3,4,  6,7];
+
+    delta_within $res->flatten, \@checklocs, '1e-4', 'geopos - location exists';
     is_deeply $redis->geopos($key => qw( NotExists )), [[]], 'geopos - location not exists';
 
     is_deeply $redis->georadius($key => qw( -3.0 53.8 20 km WITHDIST ASC)),
