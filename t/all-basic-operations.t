@@ -215,7 +215,8 @@ sub Strings {
   is $redis->incr($key), 11, 'incr';
   is $redis->incrby($key, 6), 17, 'incrby';
 
-  is $redis->incrbyfloat($key, 3.895421),  20.895421, 'positive incrbyfloat';
+  # 32 bit Redis on ARM requires floating point precision fix
+  is sprintf('%.6f', $redis->incrbyfloat($key, 3.895421)),  20.895421, 'positive incrbyfloat';
   is $redis->incrbyfloat($key, -6.895421), 14,        'negative incrbyfloat';
 
   is $redis->mset($key => 123, "$key:ex" => 321), 'OK', 'mset';
